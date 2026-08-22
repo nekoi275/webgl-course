@@ -1,0 +1,18 @@
+{
+  "name": "practical-webgl-from-scratch-course",
+  "version": "1.0.0",
+  "description": "Examples for the Practical WebGL from scratch AWWWARDS video course",
+  "main": "index.js",
+  "scripts": {
+    "start": "http-server src"
+  },
+  "keywords": [
+    "webgl",
+    "glsl",
+    "animation",
+    "shaders"
+  ],
+  "dependencies": {
+    "http-server": "^14.0.0"
+  }
+}
