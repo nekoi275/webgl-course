@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>05 - Drawing lines</title>
+
+  <style>
+      
+    * { margin: 0; padding: 0; }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: sans-serif;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 1.5em;
+      margin-bottom: 1em;
+    }
+
+    #go-back {
+      position: fixed;
+      top: 1em;
+      left: 1em;
+    }
+
+    #canvas {
+      box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.2);
+    }
+
+    .select-wrapper {
+      margin-bottom: 20px;
+    }
+  </style>
+
+</head>
+<body>
+
+  <a id="go-back" href="/">Go Back</a>
+
+  <div id="container">
+    <h1>05 Drawing lines</h1>
+    <div class="select-wrapper">
+      <label for="line-mode">Line Mode:</label>
+      <select name="line-mode" id="line-mode">
+        <option value="LINE_STRIP">gl.LINE_STRIP</option>
+        <option value="LINES">gl.LINES</option>
+        <option value="LINE_LOOP">gl.LINE_LOOP</option>
+      </select>
+    </div>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <script>
+    const VERTEX_SHADER_SOURCE = `
+        attribute vec4 position;
+        attribute vec4 color;
+
+        varying vec4 v_color;
+
+        void main () {
+            gl_Position = position;
+
+            v_color = color;
+        }
+    `
+
+    const FRAGMENT_SHADER_SOURCE = `
+        precision highp float;
+        varying vec4 v_color;
+
+        void main () {
+            gl_FragColor = v_color;
+        }
+    `
+
+    const CANVAS_WIDTH = 512
+    const CANVAS_HEIGHT = 512
+
+    const canvas = document.getElementById('canvas')
+    canvas.width = CANVAS_WIDTH * devicePixelRatio
+    canvas.height = CANVAS_HEIGHT * devicePixelRatio
+    canvas.style.setProperty('width', `${CANVAS_WIDTH}px`)
+    canvas.style.setProperty('height', `${CANVAS_HEIGHT}px`)
+
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+
+    const vertexShader = createShader(gl.VERTEX_SHADER, VERTEX_SHADER_SOURCE)
+    const fragmentShader = createShader(gl.FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE)
+
+    const drawingProgram = createProgram(vertexShader, fragmentShader)
+
+    let lineDrawMode = 'LINE_STRIP'
+
+    const LINE_VERTICES_COUNT = 10
+    const LINE_DRAWING_WIDTH = 1
+    const lineStepX = LINE_DRAWING_WIDTH / LINE_VERTICES_COUNT
+    const LINE_DRAWING_HEIGHT = 0.5
+    let positions = new Float32Array(LINE_VERTICES_COUNT * 2)
+    for (let i = 0; i < LINE_VERTICES_COUNT; i++) {
+      positions[i * 2 + 0] = -LINE_DRAWING_WIDTH / 2 + lineStepX * i
+      positions[i * 2 + 1] = i % 2 === 0 ? -LINE_DRAWING_HEIGHT / 2 : LINE_DRAWING_HEIGHT / 2
+    }
+
+    let colors = new Float32Array(LINE_VERTICES_COUNT * 3)
+    for (let i = 0; i < LINE_VERTICES_COUNT; i++) {
+      colors[i * 3 + 0] = Math.random()
+      colors[i * 2 + 1] = Math.random()
+      colors[i * 3 + 1] = Math.random()
+    }
+
+    const vertexBuffer = gl.createBuffer()
+
+    const colorBuffer = gl.createBuffer()
+
+    const positionAttributeLocationGPU = gl.getAttribLocation(drawingProgram, 'position') // 0
+    const colorAttributeLocationGPU = gl.getAttribLocation(drawingProgram, 'color') // 1
+
+    canvas.addEventListener('click', onMouseClick)
+
+    const selectElement = document.getElementById('line-mode')
+    selectElement.addEventListener('change', onLineDrawModeSelect)
+
+    function onLineDrawModeSelect(e) {
+      lineDrawMode = e.target.value 
+    }
+
+    function onMouseClick (event) {
+      const globalPageCoordX = event.pageX
+      const globalPageCoordY = event.pageY
+      const canvasBoundingBox = canvas.getBoundingClientRect()
+      const localCanvasCoordX = globalPageCoordX - canvasBoundingBox.left
+      const localCanvasCoordY = globalPageCoordY - canvasBoundingBox.top
+      const webglNormalisedCoordX = localCanvasCoordX / canvasBoundingBox.width * 2 - 1
+      const webglNormalisedCoordY = 2 - localCanvasCoordY / canvasBoundingBox.height * 2 - 1
+      positions = new Float32Array([
+        ...positions,
+        webglNormalisedCoordX,
+        webglNormalisedCoordY
+      ])
+
+      const randR = Math.random()
+      const randG = Math.random()
+      const randB = Math.random()
+      colors = new Float32Array([
+        ...colors,
+        randR,
+        randG,
+        randB
+      ])
+
+    }
+
+    requestAnimationFrame(renderFrame)
+
+    function renderFrame() {
+      requestAnimationFrame(renderFrame)
+
+      gl.viewport(0,0, gl.drawingBufferWidth, gl.drawingBufferHeight)
+      gl.clearColor(0,0,0,1)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+      
+      {
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer)
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.DYNAMIC_DRAW)
+        gl.enableVertexAttribArray(positionAttributeLocationGPU)
+        gl.vertexAttribPointer(positionAttributeLocationGPU, 2, gl.FLOAT, false, 0, 0)
+      }
+
+      {
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer)
+        gl.bufferData(gl.ARRAY_BUFFER, colors, gl.DYNAMIC_DRAW)
+        gl.enableVertexAttribArray(colorAttributeLocationGPU)
+        gl.vertexAttribPointer(colorAttributeLocationGPU, 3, gl.FLOAT, false, 0, 0)
+      }
+
+      gl.useProgram(drawingProgram)
+
+      gl.drawArrays(gl[lineDrawMode], 0, positions.length / 2)
+    }
+
+    function createShader(type, source) {
+        const shader = gl.createShader(type)
+        gl.shaderSource(shader, source)
+        gl.compileShader(shader)
+
+        if (gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            return shader
+        }
+
+        console.error(`Shader compilation error: ${gl.getShaderInfoLog(shader)}`)
+
+        gl.deleteShader(shader)
+    }
+    function createProgram(vertextShaderObject, fragmentShaderObject) {
+        const program = gl.createProgram()
+        gl.attachShader(program, vertextShaderObject)
+        gl.attachShader(program, fragmentShaderObject)
+        gl.linkProgram(program)
+
+        if (gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            return program
+        }
+
+        console.error(`Program linking error: ${gl.getProgramInfoLog(program)}`)
+
+        gl.deleteProgram(program)
+    }
+  </script>
+
+</body>
+</html>
