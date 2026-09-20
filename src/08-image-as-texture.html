@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>08 Image as texture</title>
+
+  <style>
+      
+    * { margin: 0; padding: 0; }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: sans-serif;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 1.5em;
+      margin-bottom: 1em;
+    }
+
+    #go-back {
+      position: fixed;
+      top: 1em;
+      left: 1em;
+    }
+
+    #canvas {
+      box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.2);
+    }
+
+    #texture-controls {
+      margin-bottom: 1rem;
+    }
+  </style>
+
+</head>
+<body>
+
+  <a id="go-back" href="/">Go Back</a>
+
+  <div id="container">
+    <h1>08 - Image as texture</h1>
+    <div id="texture-controls">
+      <div>
+        <label for="texture-scale">Texture scale:</label>
+        <input id="texture-scale" type="range" min="0.1" max="10" value="0" step="0.1"/>
+      </div>
+      <div>
+        <label for="texture-wrap-s-mode">Texture wrap S mode:</label>
+        <select name="texture-wrap-s-mode" id="texture-wrap-s-mode">
+          <option value="REPEAT">gl.REPEAT</option>
+          <option value="CLAMP_TO_EDGE">gl.CLAMP_TO_EDGE</option>
+          <option value="MIRRORED_REPEAT">gl.MIRRORED_REPEAT</option>
+        </select>
+      </div>
+      <div>
+        <label for="texture-wrap-t-mode">Texture wrap T mode:</label>
+        <select name="texture-wrap-t-mode" id="texture-wrap-t-mode">
+          <option value="REPEAT">gl.REPEAT</option>
+          <option value="CLAMP_TO_EDGE">gl.CLAMP_TO_EDGE</option>
+          <option value="MIRRORED_REPEAT">gl.MIRRORED_REPEAT</option>
+        </select>
+      </div>
+      <div>
+        <label for="texture-min-filter-mode">Texture MIN filter mode:</label>
+        <select name="texture-min-filter-mode" id="texture-min-filter-mode">
+          <option value="LINEAR">gl.LINEAR</option>
+          <option value="NEAREST">gl.NEAREST</option>
+          <option value="NEAREST_MIPMAP_NEAREST">gl.NEAREST_MIPMAP_NEAREST</option>
+          <option value="LINEAR_MIPMAP_NEAREST">gl.LINEAR_MIPMAP_NEAREST</option>
+          <option value="NEAREST_MIPMAP_LINEAR">gl.LNEAREST_MIPMAP_LINEAR</option>
+        </select>
+      </div>
+      <div>
+        <label for="texture-mag-filter-mode">Texture MAG filter mode:</label>
+        <select name="texture-mag-filter-mode" id="texture-mag-filter-mode">
+          <option value="LINEAR">gl.LINEAR</option>
+          <option value="NEAREST">gl.NEAREST</option>
+        </select>
+      </div>
+    </div>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <script>
+    const VERTEX_SHADER_SOURCE = `
+        attribute vec4 position;
+        attribute vec2 uv;
+
+        varying vec2 v_uv;
+
+        void main () {
+            gl_Position = position;
+
+            v_uv = uv;
+        }
+    `
+
+    const FRAGMENT_SHADER_SOURCE = `
+        precision highp float;
+
+        uniform float scaleFactor;
+
+        uniform sampler2D myTexture;
+
+        varying vec2 v_uv;
+
+        void main () {
+            vec2 scaledUVs = v_uv * scaleFactor;
+            vec4 textureColor = texture2D(myTexture, scaledUVs);
+            gl_FragColor = textureColor;
+        }
+    `
+
+    const CANVAS_WIDTH = 512
+    const CANVAS_HEIGHT = 512
+
+    let textureWrapSMode = 'REPEAT'
+    let textureWrapTMode = 'REPEAT'
+    let textureMagFilter = 'LINEAR'
+    let textureMinFilter = 'LINEAR_MIPMAP_LINEAR'
+    let textureScaleFactor = 1
+
+
+    const canvas = document.getElementById('canvas')
+    canvas.width = CANVAS_WIDTH * devicePixelRatio
+    canvas.height = CANVAS_HEIGHT * devicePixelRatio
+    canvas.style.setProperty('width', `${CANVAS_WIDTH}px`)
+    canvas.style.setProperty('height', `${CANVAS_HEIGHT}px`)
+
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+
+    const vertexShader = createShader(gl.VERTEX_SHADER, VERTEX_SHADER_SOURCE)
+    const fragmentShader = createShader(gl.FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE)
+
+    const drawingProgram = createProgram(vertexShader, fragmentShader)
+
+    const QUAD_WIDTH = 2
+    const QUAD_HEIGHT = 2
+    const positions = new Float32Array([
+      -QUAD_WIDTH / 2, QUAD_HEIGHT / 2,
+      QUAD_WIDTH / 2, QUAD_HEIGHT / 2,
+      QUAD_WIDTH / 2, -QUAD_HEIGHT / 2,
+      -QUAD_WIDTH / 2, -QUAD_HEIGHT / 2
+    ])
+
+    const vertexBuffer = gl.createBuffer()
+
+    const uvBuffer = gl.createBuffer()
+    const uvs = new Float32Array([
+        0, 0,
+        1, 0,
+        1, 1,
+        0, 1
+    ])
+
+    const indices = new Uint16Array([
+      1, 2, 0,
+      0, 2, 3
+    ])
+
+    const indexBuffer = gl.createBuffer()
+
+    const positionAttributeLocationGPU = gl.getAttribLocation(drawingProgram, 'position') // 0
+    const uvAttributeLocationGPU = gl.getAttribLocation(drawingProgram, 'uv') // 1
+
+    const texture = gl.createTexture()
+    const image = new Image()
+    image.onload = onImageLoaded
+    image.src = '/assets/texture.jpg'
+
+    const wrapSModeSelect = document.getElementById('texture-wrap-s-mode')
+    const wrapTModeSelect = document.getElementById('texture-wrap-t-mode')
+    const minFilterModeSelect = document.getElementById('texture-min-filter-mode')
+    const magFilterModeSelect = document.getElementById('texture-mag-filter-mode')
+    const textureScale = document.getElementById('texture-scale')
+
+    wrapSModeSelect.addEventListener('change', onWrapSModeSelect)
+    function onWrapSModeSelect(e) {
+      textureWrapSMode = e.target.value
+    }
+
+    wrapTModeSelect.addEventListener('change', onWrapTModeSelect)
+    function onWrapTModeSelect(e) {
+      textureWrapTMode = e.target.value
+    }
+
+    minFilterModeSelect.addEventListener('change', onMinFilterModeSelect)
+    function onMinFilterModeSelect(e) {
+      textureMinFilter = e.target.value
+    }
+
+    magFilterModeSelect.addEventListener('change', onMagFilterModeSelect)
+    function onMagFilterModeSelect(e) {
+      textureMagFilter = e.target.value
+    }
+
+    textureScale.addEventListener('change', onTextureScaleChange)
+    function onTextureScaleChange(e) {
+      textureScaleFactor = parseFloat(e.target.value)
+    }
+
+    function onImageLoaded () {
+        gl.bindTexture(gl.TEXTURE_2D, texture)
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image)
+        gl.generateMipmap(gl.TEXTURE_2D)
+        gl.bindTexture(gl.TEXTURE_2D, null)
+    }
+
+    requestAnimationFrame(renderFrame)
+
+    function renderFrame() {
+      requestAnimationFrame(renderFrame)
+
+      gl.viewport(0,0, gl.drawingBufferWidth, gl.drawingBufferHeight)
+      gl.clearColor(0,0,0,1)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+
+      {
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW)
+      }
+      
+      {
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer)
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW)
+        gl.enableVertexAttribArray(positionAttributeLocationGPU)
+        gl.vertexAttribPointer(positionAttributeLocationGPU, 2, gl.FLOAT, false, 0, 0)
+      }
+
+      {
+        gl.bindBuffer(gl.ARRAY_BUFFER, uvBuffer)
+        gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW)
+        gl.enableVertexAttribArray(uvAttributeLocationGPU)
+        gl.vertexAttribPointer(uvAttributeLocationGPU, 2, gl.FLOAT, false, 0, 0)
+      }
+
+      gl.useProgram(drawingProgram)
+
+      gl.useProgram(drawingProgram)
+      const textureUniformLocationGPU = gl.getUniformLocation(drawingProgram, 'myTexture')
+      gl.uniform1i(textureUniformLocationGPU, 0)
+      const textureScaleFactorLocationGPU = gl.getUniformLocation(drawingProgram, 'scaleFactor')
+      gl.uniform1f(textureScaleFactorLocationGPU, textureScaleFactor)
+
+      gl.activeTexture(gl.TEXTURE0)
+      gl.bindTexture(gl.TEXTURE_2D, texture)
+
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
+
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl[textureWrapSMode]) // S = x
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl[textureWrapTMode]) // T = y
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl[textureMinFilter])
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl[textureMagFilter])
+
+      gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0)
+    }
+
+    function createShader(type, source) {
+        const shader = gl.createShader(type)
+        gl.shaderSource(shader, source)
+        gl.compileShader(shader)
+
+        if (gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            return shader
+        }
+
+        console.error(`Shader compilation error: ${gl.getShaderInfoLog(shader)}`)
+
+        gl.deleteShader(shader)
+    }
+    function createProgram(vertextShaderObject, fragmentShaderObject) {
+        const program = gl.createProgram()
+        gl.attachShader(program, vertextShaderObject)
+        gl.attachShader(program, fragmentShaderObject)
+        gl.linkProgram(program)
+
+        if (gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            return program
+        }
+
+        console.error(`Program linking error: ${gl.getProgramInfoLog(program)}`)
+
+        gl.deleteProgram(program)
+    }
+  </script>
+
+</body>
+</html>
