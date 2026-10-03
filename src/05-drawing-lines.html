@@ -199,9 +199,9 @@
 
         gl.deleteShader(shader)
     }
-    function createProgram(vertextShaderObject, fragmentShaderObject) {
+    function createProgram(vertexShaderObject, fragmentShaderObject) {
         const program = gl.createProgram()
-        gl.attachShader(program, vertextShaderObject)
+        gl.attachShader(program, vertexShaderObject)
         gl.attachShader(program, fragmentShaderObject)
         gl.linkProgram(program)
 
